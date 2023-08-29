@@ -1,0 +1,339 @@
+# The Snowpark package is required for Python Worksheets. 
+# You can add more packages by selecting them using the Packages control and then importing them.
+
+import snowflake.snowpark as snowpark
+from snowflake.snowpark.functions import col
+import pandas as pd
+import numpy as np
+import pyarrow
+from datetime import datetime
+import math
+# import matplotlib.pyplot as plt
+
+def main(session: snowpark.Session): 
+    # Your code goes here, inside the "main" handler.
+    tableName = 'raw.approvedloanapplications'
+    df = session.table(tableName).to_pandas()
+    pd.isnull(df).any()
+    df['int_rate'] = df['int_rate'].str.rstrip('%').astype(float)
+    
+
+    def risk_score(mths_since_last_record):
+        if pd.isnull(mths_since_last_record):  # Check for missing values
+            return 80
+        elif mths_since_last_record >= 24:
+            return 60
+        elif mths_since_last_record >= 12:
+            return 30
+        elif mths_since_last_record >= 6:
+            return 20
+        else:
+            return 10
+
+    df['Risk_Score'] = df['mths_since_last_record'].apply(risk_score)
+    # print(df.head())
+    # print(df['earliest_cr_line'].head())
+    unique_values = df['earliest_cr_line'].unique()
+    # print(unique_values)
+
+    # def calculate_credit_history(date_str):
+    #     if date_str is None:  
+    #         return None  # Handle missing values
+        
+    #     earliest_cr_line = datetime.strptime(date_str, '%b-%Y')
+    #     date_present = datetime.now()
+    #     date_diff_days = (earliest_cr_line - date_present).days
+        
+    #     # Calculate the result as per the formula
+    #     result = date_diff_days // (1000 * 60 * 60 * 24 * 30)
+        
+    #     return result
+
+
+    def calculate_credit_history(date_str):
+        if date_str is None:  
+            return None  # Handle missing values
+        
+        earliest_cr_line = datetime.strptime(date_str, '%b-%Y')
+        date_present = datetime.now()
+        date_diff = (date_present.year - earliest_cr_line.year) * 12 + (date_present.month - earliest_cr_line.month)
+    
+        # Convert the result to an integer by flooring it
+        date_diff = int(date_diff)
+        
+        return date_diff
+
+    df['Credit_History'] = df['earliest_cr_line'].apply(calculate_credit_history)
+    # print(df['Credit_History'].head())
+
+    min_value = df['Credit_History'].min()
+    max_value = df['Credit_History'].max()
+    
+    # Print the results
+    # print("Minimum value:", min_value)
+    # print("Maximum value:", max_value)
+
+    def update_risk_score(row):
+        if row['Credit_History'] >= 48:
+            return row['Risk_Score'] + 80
+        elif row['Credit_History'] >= 24:
+            return row['Risk_Score'] + 60
+        elif row['Credit_History'] >= 12:
+            return row['Risk_Score'] + 40
+        else:
+            return row['Risk_Score'] + 10
+
+    df['Risk_Score'] = df.apply(update_risk_score, axis=1)
+    # print(df['Risk_Score'])
+
+    def update_risk_score2(row):
+        num_actv_bc_tl = row['num_actv_bc_tl']
+        risk_score = row['Risk_Score']
+        
+        if num_actv_bc_tl >= 4:
+            return risk_score + 80
+        elif num_actv_bc_tl >= 3:
+            return risk_score + 60
+        elif num_actv_bc_tl >= 2:
+            return risk_score + 50
+        elif num_actv_bc_tl >= 1:
+            return risk_score + 30
+        else:
+            return risk_score + 10
+
+    # Apply the function to update the 'Risk_Score' column
+    df['Risk_Score'] = df.apply(update_risk_score2, axis=1)
+    
+    # print(df)
+
+
+    def update_risk_score3(row):
+        dti = row['dti']
+        risk_score = row['Risk_Score']
+        
+        if dti >= 500:
+            return risk_score + 10
+        elif dti >= 200:
+            return risk_score + 20
+        elif dti >= 100:
+            return risk_score + 30
+        elif dti >= 50:
+            return risk_score + 50
+        elif dti >= 20:
+            return risk_score + 60
+        elif dti >= 10:
+            return risk_score + 70
+        else:
+            return risk_score + 80
+
+    # Apply the function to update the 'Risk_Score' column
+    df['Risk_Score'] = df.apply(update_risk_score3, axis=1)
+    
+    # print(df.head())
+
+    def update_risk_score4(row):
+        mort_acc = row['mort_acc']
+        risk_score = row['Risk_Score']
+        
+        if mort_acc >= 10:
+            return risk_score + 10
+        elif mort_acc >= 5:
+            return risk_score + 30
+        elif mort_acc >= 4:
+            return risk_score + 40
+        elif mort_acc >= 3:
+            return risk_score + 50
+        elif mort_acc >= 2:
+            return risk_score + 60
+        elif mort_acc >= 1:
+            return risk_score + 70
+        else:
+            return risk_score + 80
+
+    # Apply the function to update the 'Risk_Score' column
+    df['Risk_Score'] = df.apply(update_risk_score4, axis=1)
+    
+    # print(df.head())
+
+    def update_risk_score5(row):
+        hardship_flag = row['hardship_flag']
+        risk_score = row['Risk_Score']
+        
+        if hardship_flag == 'Y':
+            return risk_score + 0
+        else:
+            return risk_score + 40
+    
+    # Apply the function to update the 'Risk_Score' column
+    df['Risk_Score'] = df.apply(update_risk_score5, axis=1)
+
+    # print(df.head())
+
+    def update_risk_score6(row):
+        debt_settlement_flag = row['debt_settlement_flag']
+        risk_score = row['Risk_Score']
+        
+        if debt_settlement_flag == 'Y':
+            return risk_score + 0
+        else:
+            return risk_score + 40
+    
+    # Apply the function to update the 'Risk_Score' column
+    df['Risk_Score'] = df.apply(update_risk_score6, axis=1)
+
+
+    def update_risk_score7(row):
+        loan_status = row['loan_status']
+        risk_score = row['Risk_Score']
+        
+        if loan_status == 'Default':
+            return risk_score + 0
+        elif loan_status == 'Charged Off':
+            return risk_score + 10
+        elif loan_status == 'Late (31-120 days)':
+            return risk_score + 20
+        elif loan_status == 'Late (16-30 days)':
+            return risk_score + 30
+        elif loan_status == 'In Grace Period':
+            return risk_score + 40
+        elif loan_status == 'Fully Paid':
+            return risk_score + 50
+        else:
+            return risk_score + 80
+    
+    # Apply the function to update the 'Risk_Score' column
+    df['Risk_Score'] = df.apply(update_risk_score7, axis=1)
+    
+    # print(df.head())
+
+    def update_risk_score8(row):
+        int_rate = row['int_rate']
+        risk_score = row['Risk_Score']
+        
+        if int_rate >= 20:
+            return risk_score + 80
+        elif int_rate >= 15:
+            return risk_score + 60
+        elif int_rate >= 10:
+            return risk_score + 30
+        elif int_rate >= 5:
+            return risk_score + 10
+        else:
+            return risk_score + 0
+    
+    # Apply the function to update the 'Risk_Score' column
+    df['Risk_Score'] = df.apply(update_risk_score8, axis=1)
+
+    def update_risk_score9(row):
+        pub_rec_bankruptcies = row['pub_rec_bankruptcies']
+        risk_score = row['Risk_Score']
+        
+        if pub_rec_bankruptcies >= 5:
+            return risk_score + 0
+        elif pub_rec_bankruptcies >= 4:
+            return risk_score + 10
+        elif pub_rec_bankruptcies >= 3:
+            return risk_score + 20
+        elif pub_rec_bankruptcies >= 2:
+            return risk_score + 30
+        elif pub_rec_bankruptcies >= 1:
+            return risk_score + 40
+        else:
+            return risk_score + 80
+    
+    # Apply the function to update the 'Risk_Score' column
+    df['Risk_Score'] = df.apply(update_risk_score9, axis=1)
+
+
+    def update_risk_score10(row):
+        revol_bal = row['revol_bal']
+        risk_score = row['Risk_Score']
+        
+        if pd.isna(revol_bal):  # MISSING_NUMERIC condition
+            return risk_score + 30
+        elif revol_bal >= 100000:
+            return risk_score + 20
+        elif revol_bal >= 75000:
+            return risk_score + 30
+        elif revol_bal >= 50000:
+            return risk_score + 40
+        elif revol_bal >= 10000:
+            return risk_score + 50
+        elif revol_bal >= 100:
+            return risk_score + 80
+        else:
+            return risk_score + 60
+        
+        # Apply the function to update the 'Risk_Score' column
+    df['Risk_Score'] = df.apply(update_risk_score10, axis=1)
+
+    # column_names=df.columns
+
+
+    df.rename(columns={'Label': 'Application_status'}, inplace=True)
+    df.rename(columns={'title':'Loan Title'}, inplace=True)
+    df.rename(columns={'emp_length':'Employment Length'}, inplace=True)
+    df.rename(columns={'dti':'Debt-To-Income Ratio'}, inplace=True)
+    df.rename(columns={'loan_amnt':'Amount Requested'}, inplace=True)
+    # print(df)  
+
+    # print(df['Amount Requested'])
+    # df['Amount Requested'].isnull().any()
+
+    column_name='Amount Requested'
+    null_rows = df.loc[df[column_name].isnull()]
+    # print(null_rows)
+
+    column_name = 'Amount Requested'
+
+    # Delete rows with null values in the specified column
+    df = df.dropna(subset=[column_name])
+    df['Application_status'].isnull().any()
+    df['Debt-To-Income Ratio'].isnull().any()
+    column_name='Debt-To-Income Ratio'
+
+    null_rows = df.loc[df[column_name].isnull()]
+    # print(null_rows)
+
+    df['Employment Length'].isnull().any()
+    df['Loan Title'].isnull().any()
+
+    column_name = 'Employment Length' 
+    value_to_find = 'n/a'
+    # Print rows with the specified value in the specified column 
+    rows_with_value = df.loc[df[column_name] == value_to_find]
+
+    column_name1 = 'Loan Title' 
+    value_to_find1 = 'Other'
+    # Print rows with the specified value in the specified column 
+    rows_with_value1 = df.loc[df[column_name1] == value_to_find1]
+
+    # Specify the columns you want to extract
+    wanted_columns = ['Amount Requested','Application_status','Debt-To-Income Ratio','Employment Length','Loan Title','Risk_Score']
+    condition_column = 'Employment Length'
+    condition_value ='n/a'
+    # Extract specific columns and rows with non-null values
+    df = df.loc[(df['Debt-To-Income Ratio'].notnull()) & (df[condition_column] != condition_value)&(df['Loan Title'] != 'Other'), wanted_columns]
+
+    df.rename(columns={'Amount Requested': 'AMOUNT_REQUESTED'}, inplace=True)
+    df.rename(columns={'Application_status': 'APPLICATION_STATUS'}, inplace=True)
+    df.rename(columns={'Debt-To-Income Ratio': 'DEBT_TO_INCOME_RATIO'}, inplace=True)
+    df.rename(columns={'Employment Length': 'EMPLOYMENT_LENGTH'}, inplace=True)
+    df.rename(columns={'Loan Title': 'LOAN_TITLE'}, inplace=True)
+    df.rename(columns={'Risk_Score': 'RISK_SCORE'}, inplace=True)
+    
+    # print(df.info())
+
+    # Converting Pandas Df to Snowpark Df
+    df = session.createDataFrame(df)
+
+    # Converting Snowpark Df to Snowflake Table (UPDATED_APPROVED)
+    df.write.mode("overwrite").save_as_table("LENDINGAI_DB.RAW.UPDATED_APPROVED")
+
+    
+    # Return value will appear in the Results tab.
+    return 'Done'
+    
+   
+
+  
